@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -9,19 +12,26 @@ import (
 )
 
 type Mail struct {
-	ID         string
-	ReceivedAt time.Time
-	Username   string
-	MailFrom   string
-	RcptTo     []string
-	Data       io.Reader
-	ClientIP   string
-	Size       int64
-	Extras     map[string]string
+	ID         string            `json:"id"`
+	ReceivedAt time.Time         `json:"received_at"`
+	Username   string            `json:"username"`
+	MailFrom   string            `json:"mail_from"`
+	RcptTo     []string          `json:"rcpt_to"`
+	Data       io.Reader         `json:"-"`
+	ClientIP   string            `json:"client_ip"`
+	Size       int64             `json:"size"`
+	Extras     map[string]string `json:"extras,omitempty"`
 }
 
-func GenerateID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+func GenerateID(username, clientIP string) string {
+	// Create a unique hash combining time, username and client info
+	timestamp := time.Now().UnixNano()
+	// Hash the username to avoid exposing it directly
+	h := sha256.New()
+	h.Write([]byte(fmt.Sprintf("%s-%s-%d", username, clientIP, timestamp)))
+	hash := base64.URLEncoding.EncodeToString(h.Sum(nil))
+	// Use first 16 chars of hash combined with timestamp
+	return fmt.Sprintf("%d-%s", timestamp, hash[:16])
 }
 
 func (m *Mail) ToEml() (*os.File, error) {
@@ -31,17 +41,22 @@ func (m *Mail) ToEml() (*os.File, error) {
 		return nil, fmt.Errorf("failed to create temporary file: %w", err)
 	}
 
-	// Write email headers
+	metadataJSON, err := json.Marshal(m)
+	if err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	// Write email headers with metadata
 	headers := fmt.Sprintf("Received: from [%s]\r\n"+
 		"Date: %s\r\n"+
-		"From: %s\r\n"+
-		"To: %s\r\n"+
-		"Message-ID: <%s>\r\n\r\n",
+		"Message-ID: <%s>\r\n"+
+		"X-SMTPD-DATA: %s\r\n\r\n",
 		m.ClientIP,
 		m.ReceivedAt.Format(time.RFC1123Z),
-		m.MailFrom,
-		m.RcptTo[0],
-		m.ID)
+		m.ID,
+		string(metadataJSON))
 
 	if _, err := tmpFile.WriteString(headers); err != nil {
 		tmpFile.Close()

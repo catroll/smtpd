@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/catroll/smtpd/config"
 	"github.com/emersion/go-smtp"
@@ -18,17 +19,21 @@ type backend struct {
 func (bkd *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	return &session{
 		backend: bkd,
+		conn:    c,
 	}, nil
 }
 
 type session struct {
-	backend *backend
-	from    string
-	to      []string
+	backend  *backend
+	conn     *smtp.Conn
+	from     string
+	to       []string
+	username string
 }
 
 func (s *session) AuthPlain(username, password string) error {
 	// TODO: Implement authentication
+	s.username = username
 	return nil
 }
 
@@ -49,24 +54,30 @@ func (s *session) Rcpt(to string, opts *smtp.RcptOptions) error {
 }
 
 func (s *session) Data(r io.Reader) error {
-	// Create a unique filename for the message
-	filename := filepath.Join(s.backend.dataDir, fmt.Sprintf("%d.eml", os.Getpid()))
-
-	// Create the file
-	f, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create mail file: %w", err)
+	clientIP := s.conn.Conn().RemoteAddr().String()
+	
+	mail := &Mail{
+		ID:         GenerateID(s.username, clientIP),
+		ReceivedAt: time.Now(),
+		Username:   s.username,
+		MailFrom:   s.from,
+		RcptTo:     s.to,
+		Data:       r,
+		ClientIP:   clientIP,
+		Size:       0, // Will be updated after saving
+		Extras:     make(map[string]string),
 	}
-	defer f.Close()
 
-	// Write message headers
-	fmt.Fprintf(f, "From: %s\n", s.from)
-	fmt.Fprintf(f, "To: %s\n", s.to)
-	fmt.Fprintf(f, "\n")
+	// Create a unique filename for the message using the mail ID
+	filename := filepath.Join(s.backend.dataDir, fmt.Sprintf("%s.eml", mail.ID))
 
-	// Copy the message body
-	if _, err := io.Copy(f, r); err != nil {
-		return fmt.Errorf("failed to write mail content: %w", err)
+	if err := mail.Save(filename); err != nil {
+		return fmt.Errorf("failed to save mail: %w", err)
+	}
+
+	// Update mail size after saving
+	if fi, err := os.Stat(filename); err == nil {
+		mail.Size = fi.Size()
 	}
 
 	return nil

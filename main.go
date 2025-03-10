@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/catroll/smtpd/config"
 	"github.com/emersion/go-smtp"
 )
 
 var (
-	configFile = "./config.yaml"
+	configFile = "config.yaml"
 )
 
 func init() {
@@ -28,15 +29,19 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Create mail storage directory if it doesn't exist
-	if err := os.MkdirAll(cfg.Storage.Path, 0755); err != nil {
+	// Create mail storage directory structure
+	mailDataPath := cfg.Storage.Path
+	if !filepath.IsAbs(mailDataPath) {
+		mailDataPath = filepath.Join(".", "maildata")
+	}
+	if err := os.MkdirAll(mailDataPath, 0755); err != nil {
 		log.Fatalf("Failed to create storage directory: %v", err)
 	}
 
 	// Initialize backend
 	bkd := &backend{
 		cfg:     cfg,
-		dataDir: cfg.Storage.Path,
+		dataDir: mailDataPath,
 	}
 
 	// Create SMTP server
@@ -63,6 +68,7 @@ func main() {
 	}
 
 	log.Printf("Starting SMTP server at %s", s.Addr)
+	log.Printf("Mail data directory: %s", mailDataPath)
 	if cfg.TLS.Enabled {
 		log.Printf("TLS is enabled")
 	}
