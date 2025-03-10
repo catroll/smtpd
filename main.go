@@ -61,8 +61,8 @@ func main() {
 	s.Domain = cfg.SMTP.Hostname
 	s.MaxMessageBytes = int64(cfg.SMTP.MaxSize)
 	s.MaxRecipients = cfg.SMTP.MaxRecipients
-	s.AllowInsecureAuth = !cfg.TLS.Enabled
-	s.EnableSMTPUTF8 = true // 支持 UTF8，以便正确处理中文
+	s.AllowInsecureAuth = cfg.SMTP.AllowInsecureAuth // 使用配置文件中的设置
+	s.EnableSMTPUTF8 = true                          // 支持 UTF8，以便正确处理中文
 	s.Debug = os.Stdout
 
 	// Configure TLS if enabled
@@ -79,9 +79,8 @@ func main() {
 
 	log.Printf("Starting SMTP server at %s", s.Addr)
 	log.Printf("Mail data directory: %s", mailDataPath)
-	if cfg.TLS.Enabled {
-		log.Printf("TLS is enabled")
-	}
+	log.Printf("TLS is %s", map[bool]string{true: "enabled", false: "disabled"}[cfg.TLS.Enabled])
+	log.Printf("Insecure auth is %s", map[bool]string{true: "allowed", false: "disabled"}[cfg.SMTP.AllowInsecureAuth])
 
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

@@ -1,42 +1,38 @@
 import smtplib
-from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
+from email.header import Header
 
-sender_email = "your_email@example.com"
-sender_password = "your_email_password"
-receiver_email = "recipient_email@example.com"
-subject = "Test Email with Attachment"
-body = "This is a test email sent with an attachment using Python."
-
-message = MIMEMultipart()
-message["From"] = sender_email
-message["To"] = receiver_email
-message["Subject"] = subject
-
-message.attach(MIMEText(body, "plain"))
-
-attachment_path = "./go.mod"
-with open(attachment_path, "rb") as file:
-    attachment = MIMEApplication(file.read(), _subtype="pdf")
-    attachment.add_header(
-        "Content-Disposition", "attachment", filename="attachment.pdf"
-    )
-    message.attach(attachment)
-
-smtp_server = "localhost"
+# 服务器配置
+smtp_server = "127.0.0.1"
 smtp_port = 2525
 
+# 认证信息
+username = "user1"
+password = "password123"
+
+# 创建邮件
+msg = MIMEText("这是一封测试邮件", "plain", "utf-8")
+msg["Subject"] = Header("测试邮件主题", "utf-8")
+msg["From"] = f"{username}@localhost"
+msg["To"] = "recipient@localhost"
+
 try:
-    server = smtplib.SMTP(smtp_server, smtp_port)
-
-    # server.starttls()
-    server.login(sender_email, sender_password)
-
-    text = message.as_string()
-    server.sendmail(sender_email, receiver_email, text)
-    print("Email sent successfully!")
+    # 创建 SMTP 连接
+    smtp = smtplib.SMTP(smtp_server, smtp_port)
+    smtp.set_debuglevel(1)  # 开启调试模式
+    
+    # 登录（无需 STARTTLS）
+    smtp.login(username, password)
+    
+    # 发送邮件
+    smtp.sendmail(msg["From"], [msg["To"]], msg.as_string())
+    print("邮件发送成功！")
+    
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"发送失败：{e}")
+    
 finally:
-    server.quit()
+    try:
+        smtp.quit()
+    except:
+        pass

@@ -1,18 +1,19 @@
 server:
   host: "127.0.0.1"
   port: 2525
-  instance_name: "smtpd-dev"  # Used for generating unique mail IDs
+  instance_name: "smtpd-dev" # Used for generating unique mail IDs
   allow_anonymous: false
 
 smtp:
   hostname: "localhost"
-  max_size: 10485760      # 10MB
+  max_size: 10485760 # 10MB in bytes
   max_recipients: 100
+  allow_insecure_auth: true # 允许非 TLS 认证
 
 storage:
   path: "./maildata"
 
 tls:
-  enabled: true
+  enabled: false # 禁用 TLS
   cert_file: "./certs/server.crt"
   key_file: "./certs/server.key"

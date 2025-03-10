@@ -16,10 +16,11 @@ type Config struct {
 		AllowAnonymous bool   `yaml:"allow_anonymous"`
 	} `yaml:"server"`
 	SMTP struct {
-		Hostname      string `yaml:"hostname"`
-		MaxSize       int    `yaml:"max_size"`       // Maximum message size in bytes
-		MaxRecipients int    `yaml:"max_recipients"` // Maximum number of recipients per message
-		AuthFile      string `yaml:"auth_file"`      // Path to auth.txt file
+		Hostname          string `yaml:"hostname"`
+		MaxSize           int    `yaml:"max_size"`            // Maximum message size in bytes
+		MaxRecipients     int    `yaml:"max_recipients"`      // Maximum number of recipients per message
+		AuthFile          string `yaml:"auth_file"`           // Path to auth.txt file
+		AllowInsecureAuth bool   `yaml:"allow_insecure_auth"` // Allow authentication without TLS
 	} `yaml:"smtp"`
 	Storage struct {
 		Path string `yaml:"path"` // Path to store mail data
@@ -39,18 +40,19 @@ func New() *Config {
 	cfg.Server.Host = "127.0.0.1"
 	cfg.Server.Port = 25
 	cfg.Server.InstanceName = "smtpd"
-	cfg.Server.AllowAnonymous = true
+	cfg.Server.AllowAnonymous = false
 	cfg.SMTP.Hostname = "localhost"
 	cfg.SMTP.MaxSize = 10 * 1024 * 1024 // 10MB
 	cfg.SMTP.MaxRecipients = 100
 	cfg.SMTP.AuthFile = "./auth.txt"
+	cfg.SMTP.AllowInsecureAuth = false // 默认不允许非 TLS 认证
 	cfg.Storage.Path = "./maildata"
 	cfg.TLS.Enabled = false
 
 	return cfg
 }
 
-// Load reads the configuration from the specified file
+// Load loads configuration from a YAML file
 func Load(path string) (*Config, error) {
 	config := New()
 
@@ -72,24 +74,29 @@ func Load(path string) (*Config, error) {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if c.Server.Port < 1 || c.Server.Port > 65535 {
-		return fmt.Errorf("invalid port number: %d", c.Server.Port)
+	// Validate server configuration
+	if c.Server.Host == "" {
+		return fmt.Errorf("server host is required")
 	}
-
+	if c.Server.Port <= 0 || c.Server.Port > 65535 {
+		return fmt.Errorf("invalid server port: %d", c.Server.Port)
+	}
 	if c.Server.InstanceName == "" {
-		return fmt.Errorf("instance_name cannot be empty")
+		return fmt.Errorf("server instance name is required")
 	}
 
-	if c.SMTP.MaxSize < 1 {
-		return fmt.Errorf("max_size must be positive")
+	// Validate SMTP configuration
+	if c.SMTP.Hostname == "" {
+		return fmt.Errorf("SMTP hostname is required")
 	}
-
-	if c.SMTP.MaxRecipients < 1 {
-		return fmt.Errorf("max_recipients must be positive")
+	if c.SMTP.MaxSize <= 0 {
+		return fmt.Errorf("invalid max message size: %d", c.SMTP.MaxSize)
 	}
-
+	if c.SMTP.MaxRecipients <= 0 {
+		return fmt.Errorf("invalid max recipients: %d", c.SMTP.MaxRecipients)
+	}
 	if c.SMTP.AuthFile == "" {
-		return fmt.Errorf("auth_file cannot be empty")
+		return fmt.Errorf("auth file path is required")
 	}
 
 	// Check if auth file exists
@@ -97,8 +104,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("auth file not found: %s", c.SMTP.AuthFile)
 	}
 
+	// Validate storage configuration
 	if c.Storage.Path == "" {
-		return fmt.Errorf("storage path cannot be empty")
+		return fmt.Errorf("storage path is required")
 	}
 
 	// Create storage directory if it doesn't exist
@@ -106,6 +114,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("creating storage directory: %w", err)
 	}
 
+	// Validate TLS configuration if enabled
 	if c.TLS.Enabled {
 		if c.TLS.CertFile == "" || c.TLS.KeyFile == "" {
 			return fmt.Errorf("TLS enabled but cert_file or key_file not specified")
