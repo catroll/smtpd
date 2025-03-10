@@ -10,15 +10,16 @@ import (
 // Config represents the application configuration
 type Config struct {
 	Server struct {
-		Host         string `yaml:"host"`
-		Port         int    `yaml:"port"`
-		InstanceName string `yaml:"instance_name"`
+		Host           string `yaml:"host"`
+		Port           int    `yaml:"port"`
+		InstanceName   string `yaml:"instance_name"`
+		AllowAnonymous bool   `yaml:"allow_anonymous"`
 	} `yaml:"server"`
 	SMTP struct {
 		Hostname      string `yaml:"hostname"`
 		MaxSize       int    `yaml:"max_size"`       // Maximum message size in bytes
 		MaxRecipients int    `yaml:"max_recipients"` // Maximum number of recipients per message
-		AuthFile     string `yaml:"auth_file"`      // Path to auth.txt file
+		AuthFile      string `yaml:"auth_file"`      // Path to auth.txt file
 	} `yaml:"smtp"`
 	Storage struct {
 		Path string `yaml:"path"` // Path to store mail data
@@ -33,25 +34,26 @@ type Config struct {
 // New creates a new Config with default values
 func New() *Config {
 	cfg := &Config{}
-	
+
 	// Set default values
 	cfg.Server.Host = "127.0.0.1"
 	cfg.Server.Port = 25
 	cfg.Server.InstanceName = "smtpd"
+	cfg.Server.AllowAnonymous = true
 	cfg.SMTP.Hostname = "localhost"
 	cfg.SMTP.MaxSize = 10 * 1024 * 1024 // 10MB
 	cfg.SMTP.MaxRecipients = 100
-	cfg.SMTP.AuthFile = "auth.txt"
+	cfg.SMTP.AuthFile = "./auth.txt"
 	cfg.Storage.Path = "./maildata"
 	cfg.TLS.Enabled = false
-	
+
 	return cfg
 }
 
 // Load reads the configuration from the specified file
 func Load(path string) (*Config, error) {
 	config := New()
-	
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
@@ -108,7 +110,7 @@ func (c *Config) Validate() error {
 		if c.TLS.CertFile == "" || c.TLS.KeyFile == "" {
 			return fmt.Errorf("TLS enabled but cert_file or key_file not specified")
 		}
-		
+
 		// Check if TLS files exist
 		if _, err := os.Stat(c.TLS.CertFile); err != nil {
 			return fmt.Errorf("cert file not found: %s", c.TLS.CertFile)

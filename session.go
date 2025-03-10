@@ -80,6 +80,14 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 }
 
 func (s *session) Mail(from string, opts *smtp.MailOptions) error {
+	if !s.backend.cfg.Server.AllowAnonymous && s.username == "" {
+		return smtp.ErrAuthRequired
+	}
+	fmt.Println("Mail from:", from)
+	fmt.Println("Mail options:", opts)
+	fmt.Println("Username:", s.username)
+	fmt.Println("AllowAnonymous:", s.backend.cfg.Server.AllowAnonymous)
+
 	if opts != nil && int64(s.backend.cfg.SMTP.MaxSize) > 0 && opts.Size > int64(s.backend.cfg.SMTP.MaxSize) {
 		return fmt.Errorf("message too large, maximum size is %d", s.backend.cfg.SMTP.MaxSize)
 	}
@@ -88,6 +96,10 @@ func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 }
 
 func (s *session) Rcpt(to string, opts *smtp.RcptOptions) error {
+	if !s.backend.cfg.Server.AllowAnonymous && s.username == "" {
+		return smtp.ErrAuthRequired
+	}
+
 	if len(s.to) >= s.backend.cfg.SMTP.MaxRecipients {
 		return fmt.Errorf("too many recipients, maximum is %d", s.backend.cfg.SMTP.MaxRecipients)
 	}
@@ -96,6 +108,10 @@ func (s *session) Rcpt(to string, opts *smtp.RcptOptions) error {
 }
 
 func (s *session) Data(r io.Reader) error {
+	if !s.backend.cfg.Server.AllowAnonymous && s.username == "" {
+		return smtp.ErrAuthRequired
+	}
+
 	clientIP := ""
 	if addr, ok := s.conn.Conn().RemoteAddr().(*net.TCPAddr); ok {
 		clientIP = addr.IP.String()

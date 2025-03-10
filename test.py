@@ -31,7 +31,7 @@ try:
     server = smtplib.SMTP(smtp_server, smtp_port)
 
     # server.starttls()
-    # server.login(sender_email, sender_password)
+    server.login(sender_email, sender_password)
 
     text = message.as_string()
     server.sendmail(sender_email, receiver_email, text)
