@@ -18,6 +18,7 @@ type Config struct {
 		Hostname      string `yaml:"hostname"`
 		MaxSize       int    `yaml:"max_size"`       // Maximum message size in bytes
 		MaxRecipients int    `yaml:"max_recipients"` // Maximum number of recipients per message
+		AuthFile     string `yaml:"auth_file"`      // Path to auth.txt file
 	} `yaml:"smtp"`
 	Storage struct {
 		Path string `yaml:"path"` // Path to store mail data
@@ -40,6 +41,7 @@ func New() *Config {
 	cfg.SMTP.Hostname = "localhost"
 	cfg.SMTP.MaxSize = 10 * 1024 * 1024 // 10MB
 	cfg.SMTP.MaxRecipients = 100
+	cfg.SMTP.AuthFile = "auth.txt"
 	cfg.Storage.Path = "./maildata"
 	cfg.TLS.Enabled = false
 	
@@ -82,6 +84,15 @@ func (c *Config) Validate() error {
 
 	if c.SMTP.MaxRecipients < 1 {
 		return fmt.Errorf("max_recipients must be positive")
+	}
+
+	if c.SMTP.AuthFile == "" {
+		return fmt.Errorf("auth_file cannot be empty")
+	}
+
+	// Check if auth file exists
+	if _, err := os.Stat(c.SMTP.AuthFile); err != nil {
+		return fmt.Errorf("auth file not found: %s", c.SMTP.AuthFile)
 	}
 
 	if c.Storage.Path == "" {

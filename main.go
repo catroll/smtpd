@@ -8,26 +8,33 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/catroll/smtpd/auth"
 	"github.com/catroll/smtpd/config"
 
 	"github.com/emersion/go-smtp"
 )
 
 var (
-	configFile = "config.yaml"
+	configFile = flag.String("config", "config.yaml", "Path to configuration file")
 )
 
 func init() {
-	flag.StringVar(&configFile, "c", configFile, "Configuration file path")
+	flag.StringVar(configFile, "c", "config.yaml", "Configuration file path")
 }
 
 func main() {
 	flag.Parse()
 
 	// Load configuration
-	cfg, err := config.Load(configFile)
+	cfg, err := config.Load(*configFile)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize authenticator
+	authenticator := auth.New()
+	if err := authenticator.LoadCredentials(cfg.SMTP.AuthFile); err != nil {
+		log.Fatalf("Failed to load auth credentials: %v", err)
 	}
 
 	// Create mail storage directory structure
@@ -41,8 +48,9 @@ func main() {
 
 	// Initialize backend
 	bkd := &backend{
-		cfg:     cfg,
-		dataDir: mailDataPath,
+		cfg:          cfg,
+		dataDir:      mailDataPath,
+		authenticator: authenticator,
 	}
 
 	// Create SMTP server

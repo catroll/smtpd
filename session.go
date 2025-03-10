@@ -8,19 +8,37 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/catroll/smtpd/auth"
 	"github.com/catroll/smtpd/config"
 	"github.com/emersion/go-smtp"
 )
 
 type backend struct {
-	cfg     *config.Config
-	dataDir string
+	cfg          *config.Config
+	dataDir      string
+	authenticator *auth.Authenticator
 }
 
 func (bkd *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	return &session{
 		backend: bkd,
 		conn:    c,
+	}, nil
+}
+
+func (bkd *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
+	return nil, smtp.ErrAuthRequired
+}
+
+func (bkd *backend) Login(username, password string) (smtp.Session, error) {
+	if !bkd.authenticator.Authenticate(username, password) {
+		return nil, smtp.ErrAuthFailed
+	}
+
+	return &session{
+		backend:  bkd,
+		conn:     nil, // Will be set by NewSession
+		username: username,
 	}, nil
 }
 
@@ -34,7 +52,9 @@ type session struct {
 }
 
 func (s *session) AuthPlain(username, password string) error {
-	// TODO: Implement authentication
+	if !s.backend.authenticator.Authenticate(username, password) {
+		return smtp.ErrAuthFailed
+	}
 	s.username = username
 	return nil
 }
