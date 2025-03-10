@@ -1,6 +1,7 @@
 server:
   host: "127.0.0.1"
   port: 2525
+  instance_name: "smtpd-dev"  # Used for generating unique mail IDs
 
 smtp:
   hostname: "localhost"

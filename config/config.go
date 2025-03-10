@@ -10,13 +10,14 @@ import (
 // Config represents the application configuration
 type Config struct {
 	Server struct {
-		Host string `yaml:"host"`
-		Port int    `yaml:"port"`
+		Host         string `yaml:"host"`
+		Port         int    `yaml:"port"`
+		InstanceName string `yaml:"instance_name"`
 	} `yaml:"server"`
 	SMTP struct {
 		Hostname      string `yaml:"hostname"`
-		MaxSize      int    `yaml:"max_size"`       // Maximum message size in bytes
-		MaxRecipients int   `yaml:"max_recipients"` // Maximum number of recipients per message
+		MaxSize       int    `yaml:"max_size"`       // Maximum message size in bytes
+		MaxRecipients int    `yaml:"max_recipients"` // Maximum number of recipients per message
 	} `yaml:"smtp"`
 	Storage struct {
 		Path string `yaml:"path"` // Path to store mail data
@@ -35,6 +36,7 @@ func New() *Config {
 	// Set default values
 	cfg.Server.Host = "127.0.0.1"
 	cfg.Server.Port = 25
+	cfg.Server.InstanceName = "smtpd"
 	cfg.SMTP.Hostname = "localhost"
 	cfg.SMTP.MaxSize = 10 * 1024 * 1024 // 10MB
 	cfg.SMTP.MaxRecipients = 100
@@ -68,6 +70,10 @@ func Load(path string) (*Config, error) {
 func (c *Config) Validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid port number: %d", c.Server.Port)
+	}
+
+	if c.Server.InstanceName == "" {
+		return fmt.Errorf("instance_name cannot be empty")
 	}
 
 	if c.SMTP.MaxSize < 1 {

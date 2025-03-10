@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/catroll/smtpd/config"
+
 	"github.com/emersion/go-smtp"
 )
 

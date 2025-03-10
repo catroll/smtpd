@@ -1,8 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/base32"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,15 +24,29 @@ type Mail struct {
 	Extras     map[string]string `json:"extras,omitempty"`
 }
 
-func GenerateID(username, clientIP string) string {
-	// Create a unique hash combining time, username and client info
+func GenerateRandomString(length int) ([]byte, error) {
+	randBytes := make([]byte, length)
+	_, err := rand.Read(randBytes)
+	if err != nil {
+		return nil, err
+	}
+	return randBytes, nil
+}
+
+func GenerateID(instanceName, username string) (string, error) {
 	timestamp := time.Now().UnixNano()
-	// Hash the username to avoid exposing it directly
+	randStr, err := GenerateRandomString(8)
+	if err != nil {
+		return "", err
+	}
+
 	h := sha256.New()
-	h.Write([]byte(fmt.Sprintf("%s-%s-%d", username, clientIP, timestamp)))
-	hash := base64.URLEncoding.EncodeToString(h.Sum(nil))
-	// Use first 16 chars of hash combined with timestamp
-	return fmt.Sprintf("%d-%s", timestamp, hash[:16])
+	h.Write(append([]byte(fmt.Sprintf("%s-%s-", instanceName, username)), randStr...))
+	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
+	hash := enc.EncodeToString(h.Sum(nil))
+	fmt.Println(hash)
+
+	return fmt.Sprintf("%d-%s", timestamp, hash[:16]), nil
 }
 
 func (m *Mail) ToEml() (*os.File, error) {
@@ -41,6 +56,7 @@ func (m *Mail) ToEml() (*os.File, error) {
 		return nil, fmt.Errorf("failed to create temporary file: %w", err)
 	}
 
+	// Convert mail metadata to JSON
 	metadataJSON, err := json.Marshal(m)
 	if err != nil {
 		tmpFile.Close()
@@ -48,15 +64,19 @@ func (m *Mail) ToEml() (*os.File, error) {
 		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
+	// Get JSON length and content
+	jsonData := string(metadataJSON)
+
+	// Format current time in PST for Received header
+	loc, _ := time.LoadLocation("America/Los_Angeles")
+	pstTime := m.ReceivedAt.In(loc)
+	timeStr := pstTime.Format("Mon, 2 Jan 2006 15:04:05 -0700 (PST)")
+
 	// Write email headers with metadata
-	headers := fmt.Sprintf("Received: from [%s]\r\n"+
-		"Date: %s\r\n"+
-		"Message-ID: <%s>\r\n"+
-		"X-SMTPD-DATA: %s\r\n\r\n",
-		m.ClientIP,
-		m.ReceivedAt.Format(time.RFC1123Z),
-		m.ID,
-		string(metadataJSON))
+	headers := fmt.Sprintf("X-SMTPD-DATA: %s\r\n"+
+		"Received: by %s with SMTP id %s;\r\n"+
+		"        %s\r\n",
+		jsonData, m.ClientIP, m.ID, timeStr)
 
 	if _, err := tmpFile.WriteString(headers); err != nil {
 		tmpFile.Close()

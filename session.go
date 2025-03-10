@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
+	"net"
 	"path/filepath"
 	"time"
 
@@ -29,6 +29,7 @@ type session struct {
 	from     string
 	to       []string
 	username string
+	mailID   string
 }
 
 func (s *session) AuthPlain(username, password string) error {
@@ -54,10 +55,17 @@ func (s *session) Rcpt(to string, opts *smtp.RcptOptions) error {
 }
 
 func (s *session) Data(r io.Reader) error {
-	clientIP := s.conn.Conn().RemoteAddr().String()
-	
+	clientIP := ""
+	if addr, ok := s.conn.Conn().RemoteAddr().(*net.TCPAddr); ok {
+		clientIP = addr.IP.String()
+	}
+
+	mailID, err := GenerateID(s.backend.cfg.Server.InstanceName, s.username)
+	if err != nil {
+		return fmt.Errorf("failed to generate ID: %w", err)
+	}
 	mail := &Mail{
-		ID:         GenerateID(s.username, clientIP),
+		ID:         mailID,
 		ReceivedAt: time.Now(),
 		Username:   s.username,
 		MailFrom:   s.from,
@@ -75,12 +83,8 @@ func (s *session) Data(r io.Reader) error {
 		return fmt.Errorf("failed to save mail: %w", err)
 	}
 
-	// Update mail size after saving
-	if fi, err := os.Stat(filename); err == nil {
-		mail.Size = fi.Size()
-	}
-
-	return nil
+	s.mailID = mail.ID
+	return &smtp.SMTPError{Code: 250, EnhancedCode: smtp.EnhancedCode{2, 0, 0}, Message: fmt.Sprintf("Message %s accepted for delivery", mail.ID)}
 }
 
 func (s *session) Reset() {
