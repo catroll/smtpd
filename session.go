@@ -26,7 +26,7 @@ func (bkd *backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	}, nil
 }
 
-func (bkd *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
+func (bkd *backend) AnonymousLogin() (smtp.Session, error) {
 	return nil, smtp.ErrAuthRequired
 }
 
