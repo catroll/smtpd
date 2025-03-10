@@ -10,12 +10,13 @@ import (
 
 	"github.com/catroll/smtpd/auth"
 	"github.com/catroll/smtpd/config"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
 
 type backend struct {
-	cfg          *config.Config
-	dataDir      string
+	cfg           *config.Config
+	dataDir       string
 	authenticator *auth.Authenticator
 }
 
@@ -51,12 +52,31 @@ type session struct {
 	mailID   string
 }
 
-func (s *session) AuthPlain(username, password string) error {
-	if !s.backend.authenticator.Authenticate(username, password) {
-		return smtp.ErrAuthFailed
+func (s *session) AuthMechanisms() []string {
+	return []string{"PLAIN", "LOGIN"}
+}
+
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	switch mech {
+	case "PLAIN":
+		return sasl.NewPlainServer(func(identity, username, password string) error {
+			if !s.backend.authenticator.Authenticate(username, password) {
+				return smtp.ErrAuthFailed
+			}
+			s.username = username
+			return nil
+		}), nil
+	case "LOGIN":
+		return sasl.NewLoginServer(func(username, password string) error {
+			if !s.backend.authenticator.Authenticate(username, password) {
+				return smtp.ErrAuthFailed
+			}
+			s.username = username
+			return nil
+		}), nil
+	default:
+		return nil, smtp.ErrAuthUnsupported
 	}
-	s.username = username
-	return nil
 }
 
 func (s *session) Mail(from string, opts *smtp.MailOptions) error {
@@ -89,7 +109,7 @@ func (s *session) Data(r io.Reader) error {
 	// Get TLS connection details if available
 	extras := make(map[string]string)
 	extras["server_name"] = s.backend.cfg.SMTP.Hostname
-	extras["protocol"] = "s"  // Default to ESMTPS
+	extras["protocol"] = "s" // Default to ESMTPS
 
 	if tlsConn, ok := s.conn.Conn().(*tls.Conn); ok {
 		state := tlsConn.ConnectionState()
@@ -120,7 +140,7 @@ func (s *session) Data(r io.Reader) error {
 			extras["tls_bits"] = "128/128" // Default to most common
 		}
 	} else {
-		extras["protocol"] = ""  // Plain ESMTP
+		extras["protocol"] = "" // Plain ESMTP
 	}
 
 	mail := &Mail{
