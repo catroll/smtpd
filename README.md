@@ -16,7 +16,7 @@
 ```sh
 go build -mod=readonly -o smtpd.exe .
 ./smtpd.exe
-perl swaks --to user@example.com --server localhost:1025
+perl swaks --to user@example.com --server localhost:2525
 ```
 
 生成自签名证书：
