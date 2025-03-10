@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -72,11 +74,35 @@ func (m *Mail) ToEml() (*os.File, error) {
 	pstTime := m.ReceivedAt.In(loc)
 	timeStr := pstTime.Format("Mon, 2 Jan 2006 15:04:05 -0700 (PST)")
 
+	// Get client hostname if available
+	clientHost := m.ClientIP
+	if names, err := net.LookupAddr(m.ClientIP); err == nil && len(names) > 0 {
+		clientHost = strings.TrimSuffix(names[0], ".")
+	}
+
+	// Build TLS info if available
+	tlsInfo := ""
+	if tlsConn, ok := m.Extras["tls_conn"]; ok {
+		tlsInfo = fmt.Sprintf("\n        (version=%s cipher=%s bits=%s)",
+			tlsConn,
+			m.Extras["tls_cipher"],
+			m.Extras["tls_bits"])
+	}
+
 	// Write email headers with metadata
 	headers := fmt.Sprintf("X-SMTPD-DATA: %s\r\n"+
-		"Received: by %s with SMTP id %s;\r\n"+
+		"Received: from %s (%s [%s])\r\n"+
+		"        by %s with ESMTP%s id %s\r\n"+
+		"        for <%s>%s;\r\n"+
 		"        %s\r\n",
-		jsonData, m.ClientIP, m.ID, timeStr)
+		jsonData,
+		clientHost, clientHost, m.ClientIP,
+		m.Extras["server_name"],
+		strings.ToUpper(m.Extras["protocol"]),
+		m.ID,
+		strings.Join(m.RcptTo, ", "),
+		tlsInfo,
+		timeStr)
 
 	if _, err := tmpFile.WriteString(headers); err != nil {
 		tmpFile.Close()

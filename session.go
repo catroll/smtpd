@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -64,6 +65,44 @@ func (s *session) Data(r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("failed to generate ID: %w", err)
 	}
+
+	// Get TLS connection details if available
+	extras := make(map[string]string)
+	extras["server_name"] = s.backend.cfg.SMTP.Hostname
+	extras["protocol"] = "s"  // Default to ESMTPS
+
+	if tlsConn, ok := s.conn.Conn().(*tls.Conn); ok {
+		state := tlsConn.ConnectionState()
+		switch state.Version {
+		case tls.VersionTLS10:
+			extras["tls_conn"] = "TLS1_0"
+		case tls.VersionTLS11:
+			extras["tls_conn"] = "TLS1_1"
+		case tls.VersionTLS12:
+			extras["tls_conn"] = "TLS1_2"
+		case tls.VersionTLS13:
+			extras["tls_conn"] = "TLS1_3"
+		}
+
+		// Map cipher suite to string
+		switch state.CipherSuite {
+		case tls.TLS_AES_128_GCM_SHA256:
+			extras["tls_cipher"] = "TLS_AES_128_GCM_SHA256"
+			extras["tls_bits"] = "128/128"
+		case tls.TLS_AES_256_GCM_SHA384:
+			extras["tls_cipher"] = "TLS_AES_256_GCM_SHA384"
+			extras["tls_bits"] = "256/256"
+		case tls.TLS_CHACHA20_POLY1305_SHA256:
+			extras["tls_cipher"] = "TLS_CHACHA20_POLY1305_SHA256"
+			extras["tls_bits"] = "256/256"
+		default:
+			extras["tls_cipher"] = fmt.Sprintf("0x%04x", state.CipherSuite)
+			extras["tls_bits"] = "128/128" // Default to most common
+		}
+	} else {
+		extras["protocol"] = ""  // Plain ESMTP
+	}
+
 	mail := &Mail{
 		ID:         mailID,
 		ReceivedAt: time.Now(),
@@ -73,7 +112,7 @@ func (s *session) Data(r io.Reader) error {
 		Data:       r,
 		ClientIP:   clientIP,
 		Size:       0, // Will be updated after saving
-		Extras:     make(map[string]string),
+		Extras:     extras,
 	}
 
 	// Create a unique filename for the message using the mail ID
