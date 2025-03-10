@@ -40,7 +40,7 @@ func main() {
 	// Create mail storage directory structure
 	mailDataPath := cfg.Storage.Path
 	if !filepath.IsAbs(mailDataPath) {
-		mailDataPath = filepath.Join(".", "maildata")
+		mailDataPath = filepath.Join(".", mailDataPath)
 	}
 	if err := os.MkdirAll(mailDataPath, 0755); err != nil {
 		log.Fatalf("Failed to create storage directory: %v", err)
@@ -48,8 +48,8 @@ func main() {
 
 	// Initialize backend
 	bkd := &backend{
-		cfg:          cfg,
-		dataDir:      mailDataPath,
+		cfg:           cfg,
+		dataDir:       mailDataPath,
 		authenticator: authenticator,
 	}
 
@@ -62,6 +62,7 @@ func main() {
 	s.MaxMessageBytes = int64(cfg.SMTP.MaxSize)
 	s.MaxRecipients = cfg.SMTP.MaxRecipients
 	s.AllowInsecureAuth = !cfg.TLS.Enabled
+	s.EnableSMTPUTF8 = true // 支持 UTF8，以便正确处理中文
 	s.Debug = os.Stdout
 
 	// Configure TLS if enabled
