@@ -1,7 +1,4 @@
-# SMTP authentication credentials
-# Format: username:password (one per line)
-# Lines starting with # are comments
-
-# Example credentials
-user1:password123
-admin:strongpassword
+{
+    "user1": "password123",
+    "admin": "strongpassword"
+}

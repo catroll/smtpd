@@ -1,75 +1,83 @@
 package auth
 
 import (
-	"bufio"
-	"fmt"
+	"encoding/json"
+	"log/slog"
 	"os"
-	"strings"
 	"sync"
+	"time"
 )
 
-// Authenticator handles SMTP authentication
+// Authenticator 处理认证相关的功能
 type Authenticator struct {
+	mu          sync.RWMutex
 	credentials map[string]string
-	mu         sync.RWMutex
 }
 
-// New creates a new Authenticator instance
+// New 创建新的认证器实例
 func New() *Authenticator {
 	return &Authenticator{
 		credentials: make(map[string]string),
 	}
 }
 
-// LoadCredentials loads credentials from a file in username:password format
+// LoadCredentials 从文件加载认证信息
 func (a *Authenticator) LoadCredentials(filename string) error {
-	file, err := os.Open(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		return fmt.Errorf("opening auth file: %w", err)
+		slog.Error("读取认证文件失败",
+			"error", err,
+			"file", filename,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		return err
 	}
-	defer file.Close()
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-		
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.Split(line, ":")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid format at line %d: expected username:password", lineNum)
-		}
-
-		username := strings.TrimSpace(parts[0])
-		password := strings.TrimSpace(parts[1])
-
-		if username == "" || password == "" {
-			return fmt.Errorf("invalid format at line %d: username and password cannot be empty", lineNum)
-		}
-
-		a.credentials[username] = password
+	if err := json.Unmarshal(data, &a.credentials); err != nil {
+		slog.Error("解析认证文件失败",
+			"error", err,
+			"file", filename,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		return err
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("reading auth file: %w", err)
-	}
-
+	slog.Info("加载认证信息成功",
+		"file", filename,
+		"count", len(a.credentials),
+		"timestamp", time.Now().Format(time.RFC3339Nano),
+	)
 	return nil
 }
 
-// Authenticate checks if the provided credentials are valid
+// Authenticate 验证用户名和密码
 func (a *Authenticator) Authenticate(username, password string) bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	storedPassword, exists := a.credentials[username]
-	return exists && storedPassword == password
+	if !exists {
+		slog.Debug("用户不存在",
+			"username", username,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		return false
+	}
+
+	if storedPassword != password {
+		slog.Debug("密码不匹配",
+			"username", username,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		return false
+	}
+
+	slog.Debug("认证成功",
+		"username", username,
+		"timestamp", time.Now().Format(time.RFC3339Nano),
+	)
+	return true
 }

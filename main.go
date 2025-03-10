@@ -4,85 +4,110 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/catroll/smtpd/auth"
 	"github.com/catroll/smtpd/config"
-
-	"github.com/emersion/go-smtp"
+	gosmtp "github.com/emersion/go-smtp"
 )
 
 var (
 	configFile = flag.String("config", "config.yaml", "Path to configuration file")
 )
 
-func init() {
-	flag.StringVar(configFile, "c", "config.yaml", "Configuration file path")
-}
-
 func main() {
 	flag.Parse()
 
-	// Load configuration
+	// 加载配置
 	cfg, err := config.Load(*configFile)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("加载配置失败",
+			"error", err,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		os.Exit(1)
 	}
 
-	// Initialize authenticator
+	// 设置日志
+	if err := cfg.SetupLogger(); err != nil {
+		slog.Error("设置日志失败",
+			"error", err,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		os.Exit(1)
+	}
+
+	// 初始化认证器
 	authenticator := auth.New()
 	if err := authenticator.LoadCredentials(cfg.SMTP.AuthFile); err != nil {
-		log.Fatalf("Failed to load auth credentials: %v", err)
+		slog.Error("加载认证信息失败",
+			"error", err,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		os.Exit(1)
 	}
 
-	// Create mail storage directory structure
+	// 创建邮件存储目录
 	mailDataPath := cfg.Storage.Path
 	if !filepath.IsAbs(mailDataPath) {
 		mailDataPath = filepath.Join(".", mailDataPath)
 	}
 	if err := os.MkdirAll(mailDataPath, 0755); err != nil {
-		log.Fatalf("Failed to create storage directory: %v", err)
+		slog.Error("创建存储目录失败",
+			"error", err,
+			"path", mailDataPath,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		os.Exit(1)
 	}
 
-	// Initialize backend
-	bkd := &backend{
-		cfg:           cfg,
-		dataDir:       mailDataPath,
-		authenticator: authenticator,
-	}
+	// 初始化后端
+	bkd := NewBackend(cfg, mailDataPath, authenticator)
 
-	// Create SMTP server
-	s := smtp.NewServer(bkd)
+	// 创建 SMTP 服务器
+	s := gosmtp.NewServer(bkd)
 
-	// Configure server
 	s.Addr = fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	s.Domain = cfg.SMTP.Hostname
 	s.MaxMessageBytes = int64(cfg.SMTP.MaxSize)
 	s.MaxRecipients = cfg.SMTP.MaxRecipients
-	s.AllowInsecureAuth = cfg.SMTP.AllowInsecureAuth // 使用配置文件中的设置
-	s.EnableSMTPUTF8 = true                          // 支持 UTF8，以便正确处理中文
+	s.AllowInsecureAuth = cfg.SMTP.AllowInsecureAuth
+	s.EnableSMTPUTF8 = true // 支持 UTF8，以便正确处理中文
 	s.Debug = os.Stdout
 
-	// Configure TLS if enabled
 	if cfg.TLS.Enabled {
-		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-		if err != nil {
-			log.Fatalf("Failed to load TLS certificates: %v", err)
-		}
 		s.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
+			Certificates: make([]tls.Certificate, 1),
+		}
+		s.TLSConfig.Certificates[0], err = tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+		if err != nil {
+			slog.Error("加载 TLS 证书失败",
+				"error", err,
+				"timestamp", time.Now().Format(time.RFC3339Nano),
+			)
+			os.Exit(1)
 		}
 	}
 
-	log.Printf("Starting SMTP server at %s", s.Addr)
-	log.Printf("Mail data directory: %s", mailDataPath)
-	log.Printf("TLS is %s", map[bool]string{true: "enabled", false: "disabled"}[cfg.TLS.Enabled])
-	log.Printf("Insecure auth is %s", map[bool]string{true: "allowed", false: "disabled"}[cfg.SMTP.AllowInsecureAuth])
+	// 记录服务器状态
+	slog.Info("SMTP 服务器启动",
+		"addr", s.Addr,
+		"data_dir", mailDataPath,
+		"tls", map[bool]string{true: "已启用", false: "已禁用"}[cfg.TLS.Enabled],
+		"insecure_auth", map[bool]string{true: "允许", false: "禁止"}[cfg.SMTP.AllowInsecureAuth],
+		"max_size", cfg.SMTP.MaxSize,
+		"max_recipients", cfg.SMTP.MaxRecipients,
+		"timestamp", time.Now().Format(time.RFC3339Nano),
+	)
 
 	if err := s.ListenAndServe(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		slog.Error("服务器启动失败",
+			"error", err,
+			"timestamp", time.Now().Format(time.RFC3339Nano),
+		)
+		os.Exit(1)
 	}
 }
