@@ -1,0 +1,7 @@
+{
+    "go.buildFlags": ["-mod=readonly"],
+    "go.testFlags": ["-mod=readonly"],
+    "go.toolsEnvVars": {
+        "GOFLAGS": "-mod=readonly"
+    }
+}
